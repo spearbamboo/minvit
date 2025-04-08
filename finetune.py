@@ -1,5 +1,5 @@
 """
-CUDA_VISIBLE_DEVICES=0 wandb run --job_type=finetune finetune.py --datapath ~/gent/data --batch_size=256 --amp
+CUDA_VISIBLE_DEVICES=0 wandb run --job_type=finetune finetune.py --datapath ~/gent/data --batch_size=256 --amp --pretrained_weights /path/to/train_ssl_checkpoint.pth
 """
 
 import wandb
@@ -102,7 +102,8 @@ def init_parser():
     parser.add_argument('--re_r1', default=0.3, type=float, help='aspect of erasing area')
     parser.add_argument('--is_LSA', action='store_true', help='Locality Self-Attention')
     parser.add_argument('--is_SPT', action='store_true', help='Shifted Patch Tokenization')
-    parser.add_argument('--pretrained_weights', default='', type=str, help="Path to pretrained weights to evaluate.")
+    # 여기서 --pretrained_weights 인자를 통해 train_ssl.py에서 저장된 가중치 파일 경로를 전달할 수 있습니다.
+    parser.add_argument('--pretrained_weights', default='', type=str, help="Path to pretrained weights from train_ssl.py")
     parser.add_argument("--checkpoint_key", default="teacher", type=str, help='Key to use in the checkpoint (example: "teacher")')
     parser.add_argument('--patch_size', default=4, type=int, help='patch size for ViT')
     parser.add_argument('--vit_mlp_ratio', default=2, type=int, help='MLP layers in the transformer encoder')
@@ -112,7 +113,7 @@ def init_parser():
 def test(epoch, testloader, model, criterion, device):
     """
     test 함수는 모델을 평가합니다.
-    DP 환경에서 model.eval()로 설정 후, testloader를 통해 손실과 정확도를 계산합니다.
+    DP 환경에서 model.eval() 후 testloader로 손실과 분류 정확도를 계산합니다.
     """
     global best_acc1
     model.eval()
@@ -137,7 +138,7 @@ def test(epoch, testloader, model, criterion, device):
     acc = 100. * correct / total
     if acc > best_acc1:
         best_acc1 = acc
-        # 최고 모델 저장 (경로 및 파일명은 필요에 따라 수정)
+        # 최고 모델 저장: train_ssl.py에서 저장한 가중치를 로드한 경우, fine-tuning 시에도 동일 가중치를 활용합니다.
         torch.save(model.state_dict(), os.path.join(save_path, 'best_model.pth'))
     print('Test Epoch: {} | Loss: {:.3f} | Acc: {:.3f}%'.format(epoch, test_loss/len(testloader), acc))
     return best_acc1
@@ -165,12 +166,13 @@ def main(args):
     logger.debug(f"Start training for {args.epochs} epochs")
     print('*' * 80 + Style.RESET_ALL)
 
-    if os.path.isfile(args.pretrained_weights):
+    # pretrained_weights 인자가 전달된 경우, train_ssl.py에서 저장한 가중치를 로드합니다.
+    if args.pretrained_weights and os.path.isfile(args.pretrained_weights):
         model_dict = model.state_dict()
-        print("loading pretrained weights . . .")
+        print("Loading pretrained weights from:", args.pretrained_weights)
         state_dict = torch.load(args.pretrained_weights, map_location="cpu")
         if args.checkpoint_key is not None and args.checkpoint_key in state_dict:
-            print(f"Take key {args.checkpoint_key} in provided checkpoint dict")
+            print(f"Using key {args.checkpoint_key} from the checkpoint")
             state_dict = state_dict[args.checkpoint_key]
         state_dict = {k.replace("module.", ""): v for k, v in state_dict.items()}
         state_dict = {k.replace("backbone.", ""): v for k, v in state_dict.items()}
@@ -501,3 +503,4 @@ if __name__ == '__main__':
     logger_dict = Logger_dict(logger, save_path)
     keys = ['T Loss', 'T Top-1', 'V Loss', 'V Top-1']
     main(args)
+
