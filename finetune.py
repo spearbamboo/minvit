@@ -503,4 +503,3 @@ if __name__ == '__main__':
     logger_dict = Logger_dict(logger, save_path)
     keys = ['T Loss', 'T Top-1', 'V Loss', 'V Top-1']
     main(args)
-
